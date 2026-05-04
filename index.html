@@ -182,7 +182,6 @@
             }
 
             appContainer.innerHTML = `<div class="fade-in">${content}</div>`;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function renderProgressBar() {
@@ -214,6 +213,7 @@
                 if(state.step === 3) state.tension = 20; // reset tension on entering sim
                 state.step++;
                 render();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
 
@@ -221,6 +221,7 @@
             if (state.step > 0) {
                 state.step--;
                 render();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
 
@@ -447,19 +448,17 @@
                         </div>
                     </div>
 
-                    <div class="bg-slate-50 p-6 rounded-xl border-2 border-slate-200 hover:border-teal-500 transition-colors cursor-pointer ${state.intentChecked ? 'border-teal-500 bg-teal-50/30' : ''}" onclick="toggleIntent()">
-                        <label class="flex items-start space-x-4 cursor-pointer">
-                            <div class="relative flex items-start mt-1">
-                                <div class="flex items-center h-6">
-                                    <input type="checkbox" class="w-6 h-6 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer pointer-events-none transition-all" ${state.intentChecked ? 'checked' : ''}>
-                                </div>
+                    <label class="block bg-slate-50 p-6 rounded-xl border-2 border-slate-200 hover:border-teal-500 transition-colors cursor-pointer ${state.intentChecked ? 'border-teal-500 bg-teal-50/30' : ''}">
+                        <div class="flex items-start space-x-4">
+                            <div class="flex items-center h-6 mt-1">
+                                <input type="checkbox" onchange="toggleIntent()" class="w-6 h-6 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer transition-all" ${state.intentChecked ? 'checked' : ''}>
                             </div>
                             <div>
                                 <span class="block font-bold text-slate-900 text-lg">I am operating with Radical Candor.</span>
                                 <span class="block text-sm text-slate-600 mt-1 leading-relaxed">I am communicating with <strong>High Care</strong> and <strong>High Challenge</strong>. I am not here to punish or avoid reality. I am here to address the objective facts clearly while preserving the relationship.</span>
                             </div>
-                        </label>
-                    </div>
+                        </div>
+                    </label>
 
                     <div class="flex flex-col-reverse sm:flex-row justify-between mt-8 pt-6 border-t border-slate-100 gap-4">
                         <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
