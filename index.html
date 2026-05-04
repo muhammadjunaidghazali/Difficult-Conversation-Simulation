@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocTalk: Clinical Roleplay Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+        }
+        .hijack-active {
+            animation: pulse-red 2s infinite;
+            border-color: #ef4444 !important;
+        }
+        .step-indicator.active {
+            background-color: #0f766e;
+            color: white;
+            border-color: #0f766e;
+        }
+        .step-indicator.completed {
+            background-color: #ccfbf1;
+            color: #0f766e;
+            border-color: #99f6e4;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.90);
+            backdrop-filter: blur(12px);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        .tension-bar-transition {
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <header class="glass-panel border-b border-slate-200 py-4 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">DocTalk <span class="text-teal-600">MedEd</span></h1>
+                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Faculty Development Program Simulator</p>
+            </div>
+            <div class="hidden md:flex space-x-1" id="progress-bar">
+                <!-- Progress steps injected by JS -->
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex items-center justify-center py-8 px-4 sm:px-6 w-full relative">
+        <div id="app-container" class="bg-white rounded-2xl shadow-lg max-w-4xl w-full p-6 sm:p-10 border border-slate-100 relative z-10">
+            <!-- Dynamic Content Injected Here -->
+        </div>
+        
+        <!-- Full Screen Curveball Overlay -->
+        <div id="curveball-overlay" class="fixed inset-0 bg-slate-900/90 z-50 hidden flex-col items-center justify-center p-4 sm:p-6 text-center backdrop-blur-sm transition-opacity">
+            <div class="bg-white p-6 sm:p-8 rounded-2xl max-w-lg w-full shadow-2xl transform scale-95 transition-transform" id="curveball-modal">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <h3 class="text-2xl font-bold text-slate-900 mb-2">Amygdala Hijack!</h3>
+                <p class="text-slate-500 mb-6 text-sm">The listener is flooding. Evaluator, execute this behavior immediately:</p>
+                <div class="bg-rose-50 border border-rose-200 p-4 rounded-xl mb-8">
+                    <p class="text-lg font-bold text-rose-800" id="curveball-text">Curveball text here.</p>
+                </div>
+                <button onclick="dismissCurveball()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-6 rounded-xl transition-colors">
+                    Acknowledge & Resume
+                </button>
+                <p class="text-xs text-slate-400 mt-4">Speaker must use a Gottman Repair Attempt (e.g., Affect Labeling, Pause) to proceed.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="py-6 text-center text-xs sm:text-sm text-slate-400">
+        <p>Faculty Development Program (FDP) | Facilitated by Mr. Junaid Ghazali</p>
+        <p class="mt-1">Based on Systematic Approaches to Difficult Conversations</p>
+    </footer>
+
+    <script>
+        const state = {
+            step: 0,
+            scenario: null,
+            customScenario: "",
+            framework: null,
+            intentChecked: false,
+            timerSeconds: 0,
+            timerInterval: null,
+            timerRunning: false,
+            tension: 20, // 0 to 100
+            curveballActive: false,
+            showCheatSheet: false,
+            feedback: {
+                precision: false,
+                pace: false,
+                pause: false,
+                deescalation: false,
+                notes: ""
+            }
+        };
+
+        const steps = ["Welcome", "Scenario", "Framework", "Intent", "Execute", "Debrief"];
+
+        const scenarios = [
+            { id: "s1", title: "The Hostile Grade Dispute", desc: "A medical student angrily challenges their recent OSCE assessment, claiming your grading rubric was subjective and unfair." },
+            { id: "s2", title: "The Overstepping Co-Faculty", desc: "A peer faculty member continuously bypasses you on joint curriculum decisions and publishes research using shared data without prior review." },
+            { id: "s3", title: "Unprofessional Ward Behavior", desc: "A senior resident aggressively berates a third-year medical student in front of patients. As the attending faculty, you must address the resident's lack of professionalism." },
+            { id: "s4", title: "The Struggling Learner", desc: "You have to give feedback to a medical student who is consistently late and underperforming. They quickly become defensive and blame a lack of support from the college." },
+            { id: "s5", title: "Bring Your Own", desc: "Use a real, unresolved conflict from your current academic teaching practice or clinical faculty role." }
+        ];
+
+        const frameworks = [
+            { 
+                id: "f1", 
+                title: "NVC (Nonviolent Communication)", 
+                acronym: "Observation, Feeling, Need, Request", 
+                desc: "Best for emotional family meetings or deep interpersonal conflict. Focuses on underlying human needs.",
+                cheat: "1. When I see/hear [neutral fact]...<br>2. I feel [pure emotion, not victim verb]...<br>3. Because I need [universal value]...<br>4. Would you be willing to [actionable request]?"
+            },
+            { 
+                id: "f2", 
+                title: "O'DEAR", 
+                acronym: "Open, Describe, Explain, Ask, Request", 
+                desc: "Great for structured, objective feedback in teaching. Perfect for discussing performance with a student or colleague.",
+                cheat: "1. I'd like to discuss [topic]...<br>2. Specifically, I noticed [fact]...<br>3. The impact of this is [consequence]...<br>4. What was your perspective/intent?<br>5. In the future, I request..."
+            },
+            { 
+                id: "f3", 
+                title: "DESC", 
+                acronym: "Describe, Express, Specify, Consequences", 
+                desc: "Ideal for hard boundary setting. Use this when a colleague or patient is abusive and crosses professional lines.",
+                cheat: "1. When [exact behavior occurs]...<br>2. I feel/experience [impact]...<br>3. I specify that [new boundary/requirement]...<br>4. If this continues, the consequence will be [action]."
+            }
+        ];
+
+        const curveballs = [
+            "Listener: Cross your arms, break eye contact, and stonewall. Say absolutely nothing for 10 seconds.",
+            "Listener: Interrupt aggressively. 'You're just trying to make an example out of me!'",
+            "Listener: Deflect blame. 'Well, Dr. Smith let me do it this way last week, so why are you attacking me?'",
+            "Listener: Attack their competence. 'With all due respect, you haven't been on the wards enough lately to know how it really works.'",
+            "Listener: Shut down emotionally. Look down and say, 'Fine. I'm a terrible doctor. Just fail me.'"
+        ];
+
+        const appContainer = document.getElementById('app-container');
+        const progressBar = document.getElementById('progress-bar');
+        const curveballOverlay = document.getElementById('curveball-overlay');
+
+        function init() {
+            render();
+        }
+
+        function render() {
+            renderProgressBar();
+            
+            let content = '';
+            switch(state.step) {
+                case 0: content = renderWelcome(); break;
+                case 1: content = renderStep1(); break;
+                case 2: content = renderStep2(); break;
+                case 3: content = renderStep3(); break;
+                case 4: content = renderStep4(); break;
+                case 5: content = renderStep5(); break;
+                case 6: content = renderCompletion(); break;
+            }
+
+            appContainer.innerHTML = `<div class="fade-in">${content}</div>`;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function renderProgressBar() {
+            if (state.step === 0 || state.step === 6) {
+                progressBar.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            for (let i = 1; i <= 5; i++) {
+                let statusClass = "bg-slate-100 text-slate-400 border-slate-200";
+                if (i === state.step) statusClass = "active shadow-md";
+                else if (i < state.step) statusClass = "completed";
+
+                html += `
+                    <div class="flex items-center">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300 ${statusClass}">
+                            ${i}
+                        </div>
+                        ${i < 5 ? `<div class="w-6 sm:w-12 h-1 rounded-full ${i < state.step ? 'bg-teal-400' : 'bg-slate-100'} mx-2 transition-colors"></div>` : ''}
+                    </div>
+                `;
+            }
+            progressBar.innerHTML = html;
+        }
+
+        function nextStep() {
+            if (state.step < 6) {
+                if(state.step === 3) state.tension = 20; // reset tension on entering sim
+                state.step++;
+                render();
+            }
+        }
+
+        function prevStep() {
+            if (state.step > 0) {
+                state.step--;
+                render();
+            }
+        }
+
+        function resetApp() {
+            state.step = 0;
+            state.scenario = null;
+            state.framework = null;
+            state.intentChecked = false;
+            state.timerSeconds = 0;
+            clearInterval(state.timerInterval);
+            state.timerRunning = false;
+            state.tension = 20;
+            state.showCheatSheet = false;
+            state.feedback = { precision: false, pace: false, pause: false, deescalation: false, notes: "" };
+            render();
+        }
+
+        function selectScenario(id) { state.scenario = id; render(); }
+        function selectFramework(id) { state.framework = id; render(); }
+        function toggleIntent() { state.intentChecked = !state.intentChecked; render(); }
+        function toggleCheatSheet() { state.showCheatSheet = !state.showCheatSheet; render(); }
+
+        function toggleTimer() {
+            const btnText = document.getElementById('timer-btn-text');
+            const display = document.getElementById('timer-display');
+            
+            if (state.timerRunning) {
+                clearInterval(state.timerInterval);
+                state.timerRunning = false;
+                render(); // Re-render to update UI state
+            } else {
+                state.timerRunning = true;
+                render();
+                state.timerInterval = setInterval(() => {
+                    state.timerSeconds++;
+                    updateTimerDisplay();
+                }, 1000);
+            }
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('timer-display');
+            if(display) {
+                const m = Math.floor(state.timerSeconds / 60).toString().padStart(2, '0');
+                const s = (state.timerSeconds % 60).toString().padStart(2, '0');
+                display.innerText = `${m}:${s}`;
+            }
+        }
+
+        function changeTension(amount) {
+            state.tension += amount;
+            if(state.tension < 0) state.tension = 0;
+            if(state.tension > 100) state.tension = 100;
+            
+            updateTensionUI();
+
+            // Auto-trigger curveball if tension maxes out
+            if(state.tension >= 90 && !state.curveballActive) {
+                triggerCurveball();
+            }
+        }
+
+        function updateTensionUI() {
+            const bar = document.getElementById('tension-fill');
+            const container = document.getElementById('tension-container');
+            const text = document.getElementById('tension-text');
+            
+            if(!bar) return;
+
+            bar.style.width = `${state.tension}%`;
+            
+            container.classList.remove('hijack-active');
+
+            if(state.tension < 40) {
+                bar.className = 'tension-bar-transition h-full rounded-full bg-teal-500';
+                text.innerText = "Regulated";
+                text.className = "text-xs font-bold text-teal-600 uppercase";
+            } else if (state.tension < 80) {
+                bar.className = 'tension-bar-transition h-full rounded-full bg-amber-400';
+                text.innerText = "Escalating";
+                text.className = "text-xs font-bold text-amber-600 uppercase";
+            } else {
+                bar.className = 'tension-bar-transition h-full rounded-full bg-rose-500';
+                text.innerText = "Amygdala Hijack Imminent";
+                text.className = "text-xs font-bold text-rose-600 uppercase animate-pulse";
+                if(state.tension >= 90) container.classList.add('hijack-active');
+            }
+        }
+
+        function triggerCurveball() {
+            state.curveballActive = true;
+            const textEl = document.getElementById('curveball-text');
+            const modal = document.getElementById('curveball-modal');
+            
+            textEl.innerText = curveballs[Math.floor(Math.random() * curveballs.length)];
+            
+            curveballOverlay.classList.remove('hidden');
+            curveballOverlay.classList.add('flex');
+            
+            // Small delay for scale animation
+            setTimeout(() => {
+                modal.classList.remove('scale-95');
+                modal.classList.add('scale-100');
+            }, 10);
+            
+            // Drop tension slightly so it doesn't immediately re-trigger
+            state.tension = 60; 
+            updateTensionUI();
+        }
+
+        function dismissCurveball() {
+            state.curveballActive = false;
+            const modal = document.getElementById('curveball-modal');
+            
+            modal.classList.remove('scale-100');
+            modal.classList.add('scale-95');
+            
+            setTimeout(() => {
+                curveballOverlay.classList.add('hidden');
+                curveballOverlay.classList.remove('flex');
+            }, 200);
+        }
+
+        // --- VIEWS ---
+
+        function renderWelcome() {
+            return `
+                <div class="text-center py-8 sm:py-12">
+                    <div class="w-20 h-20 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-teal-600 shadow-sm border border-teal-100 rotate-3">
+                        <svg class="w-10 h-10 -rotate-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h2 class="text-3xl sm:text-5xl font-extrabold text-slate-900 mb-4 tracking-tight">Theory is easy.<br/>Execution is hard.</h2>
+                    <p class="text-slate-600 mb-10 max-w-2xl mx-auto text-lg leading-relaxed">
+                        Welcome to the Faculty Development Program simulation. We spend years mastering clinical medicine, but rarely get hands-on practice navigating sensitive academic discussions. Grab a colleague. One of you speaks, the other evaluates. Let's build a culture of effective communication and mutual respect.
+                    </p>
+                    <button onclick="nextStep()" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-4 px-10 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5">
+                        Begin Academic Scenario
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderStep1() {
+            const cards = scenarios.map(s => `
+                <div onclick="selectScenario('${s.id}')" class="cursor-pointer border-2 rounded-xl p-5 transition-all duration-200 ${state.scenario === s.id ? 'border-teal-500 bg-teal-50/50 shadow-md ring-2 ring-teal-500/20' : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50'}">
+                    <h3 class="font-bold text-slate-900 text-lg flex items-center">
+                        ${state.scenario === s.id ? '<svg class="w-5 h-5 text-teal-600 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>' : ''}
+                        ${s.title}
+                    </h3>
+                    <p class="text-sm text-slate-600 mt-2 leading-relaxed">${s.desc}</p>
+                </div>
+            `).join('');
+
+            return `
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">1. Select Your Scenario</h2>
+                    <p class="text-slate-500 mb-8 text-base">Choose a situation to simulate. The stakes are high, and the emotional charge is real.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                        ${cards}
+                    </div>
+                    ${state.scenario === 's5' ? `
+                        <div class="mb-6 fade-in bg-slate-50 p-5 rounded-xl border border-slate-200">
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Describe your specific conflict:</label>
+                            <textarea id="custom-scenario-input" onchange="state.customScenario = this.value" rows="3" class="w-full border-slate-300 rounded-lg shadow-sm p-3 focus:ring-teal-500 focus:border-teal-500 border" placeholder="E.g., An ICU nurse who consistently overrides my ventilation settings without consulting me...">${state.customScenario}</textarea>
+                        </div>
+                    ` : ''}
+                    <div class="flex flex-col-reverse sm:flex-row justify-between mt-8 pt-6 border-t border-slate-100 gap-4">
+                        <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
+                        <button onclick="nextStep()" class="bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-8 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors" ${!state.scenario ? 'disabled' : ''}>Next Step</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStep2() {
+            const cards = frameworks.map(f => `
+                <div onclick="selectFramework('${f.id}')" class="cursor-pointer border-2 rounded-xl p-6 transition-all duration-200 flex flex-col sm:flex-row items-start sm:space-x-5 ${state.framework === f.id ? 'border-teal-500 bg-teal-50/50 shadow-md ring-2 ring-teal-500/20' : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50'}">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full ${state.framework === f.id ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'} flex items-center justify-center font-bold text-lg mb-4 sm:mb-0 transition-colors">
+                        ${f.id.toUpperCase()}
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-xl">${f.title}</h3>
+                        <p class="text-xs font-mono font-semibold text-teal-700 mt-1.5 mb-2 bg-teal-100/50 border border-teal-200 inline-block px-2 py-1 rounded">${f.acronym}</p>
+                        <p class="text-sm text-slate-600 leading-relaxed">${f.desc}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">2. Choose Your Architecture</h2>
+                    <p class="text-slate-500 mb-8 text-base">Under stress, the prefrontal cortex shuts down. You need a linguistic framework to prevent rambling or attacking.</p>
+                    <div class="space-y-4 mb-6">
+                        ${cards}
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row justify-between mt-8 pt-6 border-t border-slate-100 gap-4">
+                        <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
+                        <button onclick="nextStep()" class="bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-8 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors" ${!state.framework ? 'disabled' : ''}>Next Step</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStep3() {
+            return `
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">3. Calibrate Your Intent</h2>
+                    <p class="text-slate-500 mb-8 text-base">Before you speak, check your biology. Are you trying to solve a problem, or are you just trying to win?</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-red-50 p-5 rounded-xl border border-red-100">
+                            <h4 class="font-bold text-red-800 mb-2 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                Avoid Obnoxious Aggression
+                            </h4>
+                            <p class="text-sm text-red-700">"Your teaching evaluations are terrible, you're just confusing the students." <br/><span class="opacity-75 mt-1 block">(Challenge without care. Triggers defensiveness.)</span></p>
+                        </div>
+                        <div class="bg-amber-50 p-5 rounded-xl border border-amber-100">
+                            <h4 class="font-bold text-amber-800 mb-2 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Avoid Ruinous Empathy
+                            </h4>
+                            <p class="text-sm text-amber-700">Passing a consistently underperforming student to avoid an uncomfortable feedback session. <br/><span class="opacity-75 mt-1 block">(Care without challenge. Detrimental to their learning.)</span></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-xl border-2 border-slate-200 hover:border-teal-500 transition-colors cursor-pointer ${state.intentChecked ? 'border-teal-500 bg-teal-50/30' : ''}" onclick="toggleIntent()">
+                        <label class="flex items-start space-x-4 cursor-pointer">
+                            <div class="relative flex items-start mt-1">
+                                <div class="flex items-center h-6">
+                                    <input type="checkbox" class="w-6 h-6 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer pointer-events-none transition-all" ${state.intentChecked ? 'checked' : ''}>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="block font-bold text-slate-900 text-lg">I am operating with Radical Candor.</span>
+                                <span class="block text-sm text-slate-600 mt-1 leading-relaxed">I am communicating with <strong>High Care</strong> and <strong>High Challenge</strong>. I am not here to punish or avoid reality. I am here to address the objective facts clearly while preserving the relationship.</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="flex flex-col-reverse sm:flex-row justify-between mt-8 pt-6 border-t border-slate-100 gap-4">
+                        <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
+                        <button onclick="nextStep()" class="bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-8 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors" ${!state.intentChecked ? 'disabled' : ''}>Enter Simulation</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStep4() {
+            const selectedFramework = frameworks.find(f => f.id === state.framework);
+            const selectedScenario = scenarios.find(s => s.id === state.scenario);
+
+            // Re-apply tension width logic because innerHTML resets inline styles
+            setTimeout(updateTensionUI, 0);
+
+            return `
+                <div class="fade-in">
+                    <!-- HEADER / TIMER -->
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">4. Interactive Simulation</h2>
+                            <p class="text-slate-500 mt-1">Evaluator: You have the controls. Speaker: Start talking.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleTimer()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center">
+                                <svg class="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    ${state.timerRunning 
+                                        ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>` 
+                                        : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>`}
+                                </svg>
+                                <span id="timer-btn-text">${state.timerRunning ? 'Pause' : 'Start'}</span>
+                            </button>
+                            <div class="bg-slate-900 text-white font-mono text-2xl px-4 py-2 rounded-lg shadow-inner tracking-widest border border-slate-700" id="timer-display">
+                                ${Math.floor(state.timerSeconds / 60).toString().padStart(2, '0')}:${(state.timerSeconds % 60).toString().padStart(2, '0')}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CONTEXT & CHEAT SHEET -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Scenario</h4>
+                            <p class="text-sm font-semibold text-slate-800">${selectedScenario.title}</p>
+                            ${state.scenario === 's5' ? `<p class="text-xs text-slate-600 mt-1 italic">"${state.customScenario}"</p>` : ''}
+                        </div>
+                        <div class="bg-teal-50 border border-teal-100 p-4 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <h4 class="text-xs font-bold text-teal-800 uppercase tracking-wider mb-1">Framework: ${selectedFramework.title}</h4>
+                                <p class="font-mono text-xs text-teal-700 font-semibold mb-2">${selectedFramework.acronym}</p>
+                            </div>
+                            <button onclick="toggleCheatSheet()" class="text-xs font-bold bg-white text-teal-700 border border-teal-200 py-1.5 px-3 rounded shadow-sm hover:bg-teal-600 hover:text-white transition-colors text-left w-max">
+                                ${state.showCheatSheet ? 'Hide Cheat Sheet' : 'Show Cheat Sheet'}
+                            </button>
+                        </div>
+                    </div>
+
+                    ${state.showCheatSheet ? `
+                        <div class="bg-slate-800 text-white p-5 rounded-xl mb-6 border border-slate-700 fade-in shadow-lg">
+                            <h4 class="text-sm font-bold text-teal-400 uppercase tracking-wider mb-2">Suggested Phrasing</h4>
+                            <div class="text-sm text-slate-200 leading-relaxed font-mono">
+                                ${selectedFramework.cheat}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- INTERACTIVE EVALUATOR DASHBOARD -->
+                    <div class="bg-white border-2 border-slate-200 rounded-2xl p-6 shadow-sm mb-8" id="tension-container">
+                        <div class="flex justify-between items-end mb-2">
+                            <h3 class="text-lg font-bold text-slate-900 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                Listener Tension Meter
+                            </h3>
+                            <span id="tension-text" class="text-xs font-bold text-teal-600 uppercase">Regulated</span>
+                        </div>
+                        
+                        <!-- Progress Bar -->
+                        <div class="w-full bg-slate-100 rounded-full h-4 mb-6 border border-slate-200 overflow-hidden">
+                            <div id="tension-fill" class="tension-bar-transition h-full rounded-full bg-teal-500" style="width: ${state.tension}%"></div>
+                        </div>
+
+                        <p class="text-sm text-slate-500 mb-4 text-center">Evaluator: Adjust tension based on speaker's performance. Red zone triggers auto-curveball.</p>
+
+                        <!-- Controls (Stacked on mobile for touch-friendliness) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <button onclick="changeTension(-15)" class="flex flex-col items-center justify-center p-5 rounded-xl border-2 border-emerald-100 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 transition-colors touch-manipulation">
+                                <svg class="w-8 h-8 text-emerald-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                <span class="font-bold text-emerald-800 text-base sm:text-sm">Decrease Tension</span>
+                                <span class="text-sm sm:text-xs text-emerald-600 mt-1 text-center">Good Pause / Objective Tone</span>
+                            </button>
+                            
+                            <button onclick="changeTension(25)" class="flex flex-col items-center justify-center p-5 rounded-xl border-2 border-rose-100 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 transition-colors touch-manipulation">
+                                <svg class="w-8 h-8 text-rose-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                                <span class="font-bold text-rose-800 text-base sm:text-sm">Increase Tension</span>
+                                <span class="text-sm sm:text-xs text-rose-600 mt-1 text-center">Rushing / Victim Verbs / Attack</span>
+                            </button>
+                        </div>
+                        
+                        <div class="mt-5 text-center">
+                            <button onclick="triggerCurveball()" class="text-xs font-bold text-slate-400 hover:text-slate-600 underline">Manually Force Curveball</button>
+                        </div>
+                    </div>
+
+                    <!-- FOOTER CONTROLS -->
+                    <div class="flex flex-col-reverse sm:flex-row justify-between pt-6 border-t border-slate-100 gap-4">
+                        <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
+                        <button onclick="nextStep()" class="bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-8 rounded-lg shadow-md transition-colors">End & Debrief</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStep5() {
+            if (state.timerRunning) {
+                clearInterval(state.timerInterval);
+                state.timerRunning = false;
+            }
+
+            return `
+                <div class="fade-in">
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">5. Peer Debrief</h2>
+                    <p class="text-slate-500 mb-6 text-base">Feedback isn't about being nice; it's about being effective. Evaluator, fill out the rubric below based on what you heard.</p>
+                    
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm mb-8 overflow-hidden">
+                        <div class="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                            <h3 class="font-bold text-slate-800">Evaluator Checklist</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            
+                            <label class="flex items-start space-x-4 p-4 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-200 touch-manipulation">
+                                <input type="checkbox" class="mt-1 w-6 h-6 text-teal-600 rounded border-slate-300 focus:ring-teal-500" 
+                                    ${state.feedback.precision ? 'checked' : ''} 
+                                    onchange="state.feedback.precision = this.checked">
+                                <div>
+                                    <span class="block font-semibold text-slate-900 text-base">Precision & Objectivity</span>
+                                    <span class="block text-sm text-slate-500 mt-1">Did they state observable facts without using absolute terms (always/never) or Victim Verbs?</span>
+                                </div>
+                            </label>
+
+                            <label class="flex items-start space-x-4 p-4 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-200 touch-manipulation">
+                                <input type="checkbox" class="mt-1 w-6 h-6 text-teal-600 rounded border-slate-300 focus:ring-teal-500"
+                                    ${state.feedback.pace ? 'checked' : ''} 
+                                    onchange="state.feedback.pace = this.checked">
+                                <div>
+                                    <span class="block font-semibold text-slate-900 text-base">Pace Control</span>
+                                    <span class="block text-sm text-slate-500 mt-1">Did they maintain a steady tempo? Did they avoid rushing when challenged?</span>
+                                </div>
+                            </label>
+
+                            <label class="flex items-start space-x-4 p-4 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-200 touch-manipulation">
+                                <input type="checkbox" class="mt-1 w-6 h-6 text-teal-600 rounded border-slate-300 focus:ring-teal-500"
+                                    ${state.feedback.pause ? 'checked' : ''} 
+                                    onchange="state.feedback.pause = this.checked">
+                                <div>
+                                    <span class="block font-semibold text-slate-900 text-base">The Tactical Pause</span>
+                                    <span class="block text-sm text-slate-500 mt-1">Did they leave comfortable silence after their request, allowing the prefrontal cortex to catch up?</span>
+                                </div>
+                            </label>
+
+                            <label class="flex items-start space-x-4 p-4 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-200 touch-manipulation">
+                                <input type="checkbox" class="mt-1 w-6 h-6 text-teal-600 rounded border-slate-300 focus:ring-teal-500"
+                                    ${state.feedback.deescalation ? 'checked' : ''} 
+                                    onchange="state.feedback.deescalation = this.checked">
+                                <div>
+                                    <span class="block font-semibold text-slate-900 text-base">Gottman Repair</span>
+                                    <span class="block text-sm text-slate-500 mt-1">When the tension spiked or curveballs hit, did they de-escalate using affect labeling or appreciation?</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <label class="block text-sm font-semibold text-slate-700 mb-2">Evaluator Notes / Alternative Phrasing suggestions:</label>
+                        <textarea rows="4" class="w-full border-slate-300 rounded-lg shadow-sm p-4 focus:ring-teal-500 focus:border-teal-500 border" placeholder="Try saying 'When I saw the labs...' instead of 'You totally ignored the labs...'" onchange="state.feedback.notes = this.value">${state.feedback.notes}</textarea>
+                    </div>
+
+                    <div class="flex flex-col-reverse sm:flex-row justify-between pt-6 border-t border-slate-100 gap-4">
+                        <button onclick="prevStep()" class="text-slate-500 hover:text-slate-800 font-medium py-3 px-6 rounded-lg hover:bg-slate-100 transition-colors">Back</button>
+                        <button onclick="nextStep()" class="bg-teal-600 hover:bg-teal-700 text-white font-medium py-3 px-8 rounded-lg shadow-md transition-colors">Complete Protocol</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCompletion() {
+            const m = Math.floor(state.timerSeconds / 60).toString().padStart(2, '0');
+            const s = (state.timerSeconds % 60).toString().padStart(2, '0');
+            
+            const criteria = [state.feedback.precision, state.feedback.pace, state.feedback.pause, state.feedback.deescalation];
+            const score = criteria.filter(Boolean).length;
+            
+            return `
+                <div class="text-center py-8 sm:py-12 fade-in">
+                    <div class="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-600 shadow-inner">
+                        <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-2">Protocol Complete</h2>
+                    <p class="text-slate-500 mb-8 max-w-lg mx-auto">Mastering faculty communication requires reps. Great job putting in the work today.</p>
+                    
+                    <div class="flex justify-center gap-6 mb-10">
+                        <div class="bg-slate-50 border border-slate-200 px-6 py-4 rounded-xl">
+                            <p class="text-xs text-slate-500 font-bold uppercase tracking-wide mb-1">Time Under Tension</p>
+                            <p class="text-2xl font-mono text-slate-900">${m}:${s}</p>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 px-6 py-4 rounded-xl">
+                            <p class="text-xs text-slate-500 font-bold uppercase tracking-wide mb-1">Rubric Score</p>
+                            <p class="text-2xl font-bold ${score >= 3 ? 'text-emerald-600' : 'text-amber-500'}">${score}/4</p>
+                        </div>
+                    </div>
+
+                    <button onclick="resetApp()" class="bg-slate-900 hover:bg-slate-800 text-white font-semibold py-4 px-10 rounded-xl shadow-lg transition-all">
+                        Switch Roles & Restart
+                    </button>
+                </div>
+            `;
+        }
+
+        // Initialize application
+        init();
+    </script>
+</body>
+</html>
